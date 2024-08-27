@@ -2,13 +2,14 @@
 
 #[ink::contract]
 mod AeresToken {
+    use ink::storage::Mapping;
 
     /// Defines the storage of your contract.
     /// Add new fields to the below struct in order
     /// to add new static storage fields to your contract.
     #[ink(storage)]
     #[derive(Default)]
-    pub struct Erc20 {
+    pub struct AeresToken {
         /// Total token supply.
         total_supply: Balance,
         /// Mapping from owner to number of owned token.
@@ -17,6 +18,27 @@ mod AeresToken {
         /// from another account.
         allowances: Mapping<(AccountId, AccountId), Balance>,
     }
+
+    /// Event emitted when a token transfer occurs.
+    #[ink(event)]
+    pub struct Transfer {
+        #[ink(topic)]
+        from: Option<AccountId>,
+        #[ink(topic)]
+        to: Option<AccountId>,
+        value: Balance,
+    }
+
+    /// Error types.
+    #[derive(Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    pub enum Error {
+        /// Returned if not enough balance to fulfill a request is available.
+        InsufficientBalance,
+    }
+
+    /// Result type.
+    pub type Result<T> = core::result::Result<T, Error>;
 
     impl AeresToken {
         /// Creates a new token contract with the specified initial supply.
