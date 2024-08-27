@@ -7,38 +7,107 @@ mod AeresToken {
     /// Add new fields to the below struct in order
     /// to add new static storage fields to your contract.
     #[ink(storage)]
-    pub struct AeresToken {
-        /// Stores a single `bool` value on the storage.
-        value: bool,
+    #[derive(Default)]
+    pub struct Erc20 {
+        /// Total token supply.
+        total_supply: Balance,
+        /// Mapping from owner to number of owned token.
+        balances: Mapping<AccountId, Balance>,
+        /// Mapping of the token amount which an account is allowed to withdraw
+        /// from another account.
+        allowances: Mapping<(AccountId, AccountId), Balance>,
     }
 
     impl AeresToken {
-        /// Constructor that initializes the `bool` value to the given `init_value`.
+        /// Creates a new token contract with the specified initial supply.
         #[ink(constructor)]
-        pub fn new(init_value: bool) -> Self {
-            Self { value: init_value }
+        pub fn new(total_supply: Balance) -> Self {
+            let mut balances = Mapping::default();
+            let caller = Self::env().caller();
+            balances.insert(caller, &total_supply);
+            Self::env().emit_event(Transfer {
+                from: None,
+                to: Some(caller),
+                value: total_supply,
+            });
+            Self {
+                total_supply,
+                balances,
+                allowances: Default::default(),
+            }
         }
 
-        /// Constructor that initializes the `bool` value to `false`.
+        /// Returns the total token supply.
+        #[ink(message)]
+        pub fn total_supply(&self) -> Balance {
+            self.total_supply
+        }
+
+        /// Returns the account balance for the specified `owner`.
         ///
-        /// Constructors can delegate to other constructors.
-        #[ink(constructor)]
-        pub fn default() -> Self {
-            Self::new(Default::default())
+        /// Returns `0` if the account is non-existent.
+        #[ink(message)]
+        pub fn balance_of(&self, owner: AccountId) -> Balance {
+            self.balance_of_impl(&owner)
         }
 
-        /// A message that can be called on instantiated contracts.
-        /// This one flips the value of the stored `bool` from `true`
-        /// to `false` and vice versa.
-        #[ink(message)]
-        pub fn flip(&mut self) {
-            self.value = !self.value;
+        /// Returns the account balance for the specified `owner`.
+        ///
+        /// Returns `0` if the account is non-existent.
+        ///
+        /// # Note
+        ///
+        /// Prefer to call this method over `balance_of` since this
+        /// works using references which are more efficient in Wasm.
+        #[inline]
+        fn balance_of_impl(&self, owner: &AccountId) -> Balance {
+            self.balances.get(owner).unwrap_or_default()
         }
 
-        /// Simply returns the current value of our `bool`.
+        /// Transfers `value` amount of tokens from the caller's account to account `to`.
+        ///
+        /// On success a `Transfer` event is emitted.
+        ///
+        /// # Errors
+        ///
+        /// Returns `InsufficientBalance` error if there are not enough tokens on
+        /// the caller's account balance.
         #[ink(message)]
-        pub fn get(&self) -> bool {
-            self.value
+        pub fn transfer(&mut self, to: AccountId, value: Balance) -> Result<()> {
+            let from = self.env().caller();
+            self.transfer_from_to(&from, &to, value)
+        }
+
+        /// Transfers `value` amount of tokens from the caller's account to account `to`.
+        ///
+        /// On success a `Transfer` event is emitted.
+        ///
+        /// # Errors
+        ///
+        /// Returns `InsufficientBalance` error if there are not enough tokens on
+        /// the caller's account balance.
+        fn transfer_from_to(
+            &mut self,
+            from: &AccountId,
+            to: &AccountId,
+            value: Balance,
+        ) -> Result<()> {
+            let from_balance = self.balance_of_impl(from);
+            if from_balance < value {
+                return Err(Error::InsufficientBalance);
+            }
+            // We checked that from_balance >= value
+            #[allow(clippy::arithmetic_side_effects)]
+            self.balances.insert(from, &(from_balance - value));
+            let to_balance = self.balance_of_impl(to);
+            self.balances
+                .insert(to, &(to_balance.checked_add(value).unwrap()));
+            self.env().emit_event(Transfer {
+                from: Some(*from),
+                to: Some(*to),
+                value,
+            });
+            Ok(())
         }
     }
 
@@ -49,24 +118,7 @@ mod AeresToken {
     mod tests {
         /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
-
-        /// We test if the default constructor does its job.
-        #[ink::test]
-        fn default_works() {
-            let AeresToken = AeresToken::default();
-            assert_eq!(AeresToken.get(), false);
-        }
-
-        /// We test a simple use case of our contract.
-        #[ink::test]
-        fn it_works() {
-            let mut AeresToken = AeresToken::new(false);
-            assert_eq!(AeresToken.get(), false);
-            AeresToken.flip();
-            assert_eq!(AeresToken.get(), true);
-        }
     }
-
 
     /// This is how you'd write end-to-end (E2E) or integration tests for ink! contracts.
     ///
@@ -83,59 +135,5 @@ mod AeresToken {
 
         /// The End-to-End test `Result` type.
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-        /// We test that we can upload and instantiate the contract using its default constructor.
-        #[ink_e2e::test]
-        async fn default_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-            // Given
-            let mut constructor = AeresTokenRef::default();
-
-            // When
-            let contract = client
-                .instantiate("AeresToken", &ink_e2e::alice(), &mut constructor)
-                .submit()
-                .await
-                .expect("instantiate failed");
-            let call_builder = contract.call_builder::<AeresToken>();
-
-            // Then
-            let get = call_builder.get();
-            let get_result = client.call(&ink_e2e::alice(), &get).dry_run().await?;
-            assert!(matches!(get_result.return_value(), false));
-
-            Ok(())
-        }
-
-        /// We test that we can read and write a value from the on-chain contract.
-        #[ink_e2e::test]
-        async fn it_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-            // Given
-            let mut constructor = AeresTokenRef::new(false);
-            let contract = client
-                .instantiate("AeresToken", &ink_e2e::bob(), &mut constructor)
-                .submit()
-                .await
-                .expect("instantiate failed");
-            let mut call_builder = contract.call_builder::<AeresToken>();
-
-            let get = call_builder.get();
-            let get_result = client.call(&ink_e2e::bob(), &get).dry_run().await?;
-            assert!(matches!(get_result.return_value(), false));
-
-            // When
-            let flip = call_builder.flip();
-            let _flip_result = client
-                .call(&ink_e2e::bob(), &flip)
-                .submit()
-                .await
-                .expect("flip failed");
-
-            // Then
-            let get = call_builder.get();
-            let get_result = client.call(&ink_e2e::bob(), &get).dry_run().await?;
-            assert!(matches!(get_result.return_value(), true));
-
-            Ok(())
-        }
     }
 }
