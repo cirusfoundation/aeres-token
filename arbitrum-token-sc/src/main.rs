@@ -1,14 +1,9 @@
 #![cfg_attr(not(feature = "export-abi"), no_main, no_std)]
 extern crate alloc;
 
-use crate::erc20::{Erc20, Erc20Params};
+use aeres_sc::{Erc20, Erc20Params};
 use alloc::vec::Vec;
 use stylus_sdk::{alloy_primitives::U256, msg, prelude::*};
-
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-mod erc20;
 
 struct TokenParams;
 
@@ -23,8 +18,8 @@ macro_rules! env_or {
 
 /// Immutable definitions
 impl Erc20Params for TokenParams {
-    const NAME: &'static str = env_or!("NAME", "AERES");
-    const SYMBOL: &'static str = env_or!("SYMBOL", "ARS");
+    const NAME: &'static str = env_or!("NAME", "Test Arbitrum Stylus Token");
+    const SYMBOL: &'static str = env_or!("SYMBOL", "SMB");
     const DECIMALS: u8 = 18;
 }
 

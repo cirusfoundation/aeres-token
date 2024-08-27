@@ -1,6 +1,12 @@
+#![cfg_attr(not(feature = "export-abi"), no_main)]
+extern crate alloc;
+
+/// Use an efficient WASM allocator.
+#[global_allocator]
+static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
+
 use alloc::string::String;
 use core::marker::PhantomData;
-// use alloy_sol_types::sol;
 use stylus_sdk::{
     alloy_primitives::{Address, U256},
     alloy_sol_types::sol,
