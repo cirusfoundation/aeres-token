@@ -4,6 +4,7 @@ build: res
 		-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
 	cargo stylus export-abi --output ./res/aeres_sc.abi
 	cargo stylus export-abi --output ./res/aeres_sc.sol
+
 	wasm-opt -Oz ./target/wasm32-unknown-unknown/release/aeres_sc.wasm --output ./res/aeres_sc.wasm
 
 	# solc ./res/ERC20.sol -o ./res/aeres_sc.sol --abi --pretty-json --overwrite
@@ -13,6 +14,10 @@ build: res
 # Step 1: Create the 'res' directory if it doesn't exist
 res:
 	@mkdir -p ./res
+	@mkdir -p ./deploy
+
+deploy_:
+	cargo stylus deploy --private-key-path='./deploy/private_key.txt' --endpoint https://arbitrum-sepolia.blockpi.network/v1/rpc/public --wasm-file-path ./res/aeres_sc.wasm 
 
 # Add a clean target to remove build artifacts
 clean:

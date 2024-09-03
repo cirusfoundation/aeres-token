@@ -1,4 +1,4 @@
-#![cfg_attr(not(feature = "export-abi"), no_main)]
+#![cfg_attr(not(feature = "export-abi"), no_main, no_std)]
 extern crate alloc;
 
 /// Use an efficient WASM allocator.
@@ -13,11 +13,12 @@ use stylus_sdk::{
     evm, msg,
     prelude::*,
 };
+use alloy_sol_types::Result;
 
 #[macro_export]
 macro_rules! bail {
     ($error:expr) => {
-        return std::result::Result::Err($error.into())
+        return Result::Err($error.into())
     };
 }
 
