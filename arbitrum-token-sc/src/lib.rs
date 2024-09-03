@@ -1,4 +1,4 @@
-#![cfg_attr(not(feature = "export-abi"), no_main, no_std)]
+#![cfg_attr(not(feature = "export-abi"), no_main)]
 extern crate alloc;
 
 /// Use an efficient WASM allocator.
@@ -6,6 +6,7 @@ extern crate alloc;
 static ALLOC: mini_alloc::MiniAlloc = mini_alloc::MiniAlloc::INIT;
 
 use alloc::string::String;
+use alloy_sol_types::Result;
 use core::marker::PhantomData;
 use stylus_sdk::{
     alloy_primitives::{Address, U256},
@@ -13,7 +14,6 @@ use stylus_sdk::{
     evm, msg,
     prelude::*,
 };
-use alloy_sol_types::Result;
 
 #[macro_export]
 macro_rules! bail {
@@ -64,6 +64,7 @@ sol! {
     error InsufficientAllowance(address owner, address spender, uint256 have, uint256 want);
 
     error PermissionDenied();
+    error AlreadyInitialized();
     error AvailableSupplyAmountExceed();
 }
 
@@ -73,6 +74,7 @@ pub enum Erc20Error {
     InsufficientAllowance(InsufficientAllowance),
 
     PermissionDenied(PermissionDenied),
+    AlreadyInitialized(AlreadyInitialized),
     AvailableSupplyAmountExceed(AvailableSupplyAmountExceed),
 }
 
@@ -84,14 +86,16 @@ impl<T: Erc20Params> Erc20<T> {
         total_supply: U256,
         available_supply: U256,
     ) -> Result<(), Erc20Error> {
-        ensure!(
-            address == self.contract_owner.get(),
-            Erc20Error::PermissionDenied(PermissionDenied {})
-        );
-        self.total_supply.set(total_supply);
-        self.available_supply.set(available_supply);
-        self.mint(address, available_supply)?;
-        Ok(())
+        match self.contract_owner.get() == Address::ZERO {
+            true => {
+                self.contract_owner.set(address);
+                self.total_supply.set(total_supply);
+                self.available_supply.set(available_supply);
+                self.mint(address, available_supply)?;
+                Ok(())
+            }
+            false => return Err(Erc20Error::AlreadyInitialized(AlreadyInitialized {})),
+        }
     }
 
     pub fn transfer_impl(

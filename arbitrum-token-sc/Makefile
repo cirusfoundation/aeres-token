@@ -1,11 +1,12 @@
 # Define the target 'build' which accomplishes all tasks
 build: res
-	cargo +nightly-2023-10-05 build --release --target=wasm32-unknown-unknown \
-		-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
+	cargo build --release --target=wasm32-unknown-unknown 
 	cargo stylus export-abi --output ./res/aeres_sc.abi
 	cargo stylus export-abi --output ./res/aeres_sc.sol
 
-	wasm-opt -Oz ./target/wasm32-unknown-unknown/release/aeres_sc.wasm --output ./res/aeres_sc.wasm
+	cp ./target/wasm32-unknown-unknown/release/aeres_sc.wasm ./res/aeres_sc.wasm
+
+	# wasm-opt -Oz ./target/wasm32-unknown-unknown/release/aeres_sc.wasm --output ./res/aeres_sc.wasm 
 
 	# solc ./res/ERC20.sol -o ./res/aeres_sc.sol --abi --pretty-json --overwrite
 
@@ -16,9 +17,9 @@ res:
 	@mkdir -p ./res
 	@mkdir -p ./deploy
 
-deploy_:
-	cargo stylus deploy --private-key-path='./deploy/private_key.txt' --endpoint https://arbitrum-sepolia.blockpi.network/v1/rpc/public --wasm-file-path ./res/aeres_sc.wasm 
-
+stylus-deploy:
+	cargo stylus deploy --private-key-path='./deploy/private_key.txt' --endpoint https://arbitrum-sepolia.blockpi.network/v1/rpc/public 
+	
 # Add a clean target to remove build artifacts
 clean:
 	cargo clean

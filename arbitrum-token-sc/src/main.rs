@@ -18,8 +18,8 @@ macro_rules! env_or {
 
 /// Immutable definitions
 impl Erc20Params for TokenParams {
-    const NAME: &'static str = env_or!("NAME", "AERES");
-    const SYMBOL: &'static str = env_or!("SYMBOL", "SMB");
+    const NAME: &'static str = env_or!("NAME", "AERIS");
+    const SYMBOL: &'static str = env_or!("SYMBOL", "ARS");
     const DECIMALS: u8 = 18;
 }
 
