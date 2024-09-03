@@ -18,7 +18,7 @@ macro_rules! env_or {
 
 /// Immutable definitions
 impl Erc20Params for TokenParams {
-    const NAME: &'static str = env_or!("NAME", "Test Arbitrum Stylus Token");
+    const NAME: &'static str = env_or!("NAME", "AERES");
     const SYMBOL: &'static str = env_or!("SYMBOL", "SMB");
     const DECIMALS: u8 = 18;
 }
@@ -35,8 +35,13 @@ sol_storage! {
 #[external]
 #[inherit(Erc20<TokenParams>)]
 impl Token {
+    pub fn init(&mut self, total_supply: U256, available_supply: U256) -> Result<(), Vec<u8>> {
+        self.erc20
+            .init(msg::sender(), total_supply, available_supply)?;
+        Ok(())
+    }
     pub fn mint(&mut self, amount: U256) -> Result<(), Vec<u8>> {
-        self.erc20.mint(msg::sender(), amount);
+        self.erc20.mint(msg::sender(), amount)?;
         Ok(())
     }
 

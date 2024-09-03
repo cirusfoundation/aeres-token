@@ -14,6 +14,22 @@ use stylus_sdk::{
     prelude::*,
 };
 
+#[macro_export]
+macro_rules! bail {
+    ($error:expr) => {
+        return std::result::Result::Err($error.into())
+    };
+}
+
+#[macro_export]
+macro_rules! ensure {
+    ($cond:expr, $error:expr) => {
+        if !$cond {
+            $crate::bail!($error);
+        }
+    };
+}
+
 pub trait Erc20Params {
     const NAME: &'static str;
     const SYMBOL: &'static str;
@@ -27,8 +43,12 @@ sol_storage! {
         mapping(address => uint256) balances;
         /// Maps users to a mapping of each spender's allowance
         mapping(address => mapping(address => uint256)) allowances;
+        /// The available supply of the token
+        uint256 available_supply;
         /// The total supply of the token
         uint256 total_supply;
+        /// The contract owner address
+        address contract_owner;
         /// Used to allow [`Erc20Params`]
         PhantomData<T> phantom;
     }
@@ -41,16 +61,38 @@ sol! {
 
     error InsufficientBalance(address from, uint256 have, uint256 want);
     error InsufficientAllowance(address owner, address spender, uint256 have, uint256 want);
+
+    error PermissionDenied();
+    error AvailableSupplyAmountExceed();
 }
 
 #[derive(SolidityError)]
 pub enum Erc20Error {
     InsufficientBalance(InsufficientBalance),
     InsufficientAllowance(InsufficientAllowance),
+
+    PermissionDenied(PermissionDenied),
+    AvailableSupplyAmountExceed(AvailableSupplyAmountExceed),
 }
 
 // These methods aren't exposed to other contracts
 impl<T: Erc20Params> Erc20<T> {
+    pub fn init(
+        &mut self,
+        address: Address,
+        total_supply: U256,
+        available_supply: U256,
+    ) -> Result<(), Erc20Error> {
+        ensure!(
+            address == self.contract_owner.get(),
+            Erc20Error::PermissionDenied(PermissionDenied {})
+        );
+        self.total_supply.set(total_supply);
+        self.available_supply.set(available_supply);
+        self.mint(address, available_supply)?;
+        Ok(())
+    }
+
     pub fn transfer_impl(
         &mut self,
         from: Address,
@@ -74,21 +116,35 @@ impl<T: Erc20Params> Erc20<T> {
         Ok(())
     }
 
-    pub fn mint(&mut self, address: Address, value: U256) {
-        let mut balance = self.balances.setter(address);
-        let new_balance = balance.get() + value;
-        balance.set(new_balance);
-        self.total_supply.set(self.total_supply.get() + value);
+    pub fn mint(&mut self, address: Address, value: U256) -> Result<(), Erc20Error> {
+        ensure!(
+            address == self.contract_owner.get(),
+            Erc20Error::PermissionDenied(PermissionDenied {})
+        );
+        let available_supply_updated = self.available_supply.get() + value;
+        ensure!(
+            available_supply_updated <= self.total_supply.get(),
+            Erc20Error::AvailableSupplyAmountExceed(AvailableSupplyAmountExceed {})
+        );
+        self.available_supply.set(available_supply_updated);
+        let mut owner_balance = self.balances.setter(address);
+        let new_balance = owner_balance.get() + value;
+        owner_balance.set(new_balance);
         evm::log(Transfer {
             from: Address::ZERO,
             to: address,
             value,
         });
+        Ok(())
     }
 
     pub fn burn(&mut self, address: Address, value: U256) -> Result<(), Erc20Error> {
-        let mut balance = self.balances.setter(address);
-        let old_balance = balance.get();
+        ensure!(
+            address == self.contract_owner.get(),
+            Erc20Error::PermissionDenied(PermissionDenied {})
+        );
+        let mut owner_balance = self.balances.setter(address);
+        let old_balance = owner_balance.get();
         if old_balance < value {
             return Err(Erc20Error::InsufficientBalance(InsufficientBalance {
                 from: address,
@@ -96,7 +152,7 @@ impl<T: Erc20Params> Erc20<T> {
                 want: value,
             }));
         }
-        balance.set(old_balance - value);
+        owner_balance.set(old_balance - value);
         self.total_supply.set(self.total_supply.get() - value);
         evm::log(Transfer {
             from: address,
